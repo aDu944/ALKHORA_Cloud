@@ -37,6 +37,7 @@ def create_nextcloud_folder(nextcloud_url, username, password, folder_path):
 		frappe.logger().info(f"Creating Nextcloud folder (parent folders exist): {webdav_url}")
 		
 		# Single request to create the final folder
+		# Use stream=False and verify=False for faster connection (if needed)
 		try:
 			response = requests.request(
 				"MKCOL",
@@ -45,7 +46,9 @@ def create_nextcloud_folder(nextcloud_url, username, password, folder_path):
 				headers={
 					"Content-Type": "application/xml"
 				},
-				timeout=30  # Reasonable timeout
+				timeout=60,  # 60 second timeout (1 minute matches user's observation)
+				stream=False,  # Don't stream response
+				verify=True  # Keep SSL verification for security
 			)
 			
 			create_time = time.time() - start_time

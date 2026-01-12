@@ -194,6 +194,7 @@ def create_nextcloud_folder_manual(opportunity_name):
 			}
 		
 		# Enqueue immediately and return - don't wait
+		# Use at_front=True to prioritize this job
 		frappe.enqueue(
 			method=_create_nextcloud_folder_background,
 			queue="default",
@@ -201,10 +202,12 @@ def create_nextcloud_folder_manual(opportunity_name):
 			job_name=f"create_nextcloud_folder_{opportunity_name}",
 			opportunity_name=opportunity_name,
 			is_async=True,
-			now=False  # Don't wait, just enqueue
+			now=False,  # Don't wait, just enqueue
+			at_front=True  # Process this job first
 		)
 		
 		# Return immediately - don't wait for job
+		# This should return in < 1 second
 		return {
 			"success": True,
 			"message": "Folder creation started in background."
