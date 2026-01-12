@@ -47,7 +47,7 @@ def create_nextcloud_folder(nextcloud_url, username, password, folder_path):
 					webdav_url,
 					auth=HTTPBasicAuth(username, password),
 					headers={"Depth": "0"},
-					timeout=5  # Quick check
+					timeout=None  # No timeout - let it wait
 				)
 				check_time = time.time() - check_start
 				frappe.logger().info(f"PROPFIND check for {part}: {check_response.status_code} ({check_time:.2f}s)")
@@ -72,16 +72,10 @@ def create_nextcloud_folder(nextcloud_url, username, password, folder_path):
 					headers={
 						"Content-Type": "application/xml"
 					},
-					timeout=10  # Reduced timeout since we check first
+					timeout=None  # No timeout - let it wait
 				)
 				create_time = time.time() - create_start
 				frappe.logger().info(f"MKCOL response: {response.status_code} for {webdav_url} ({create_time:.2f}s)")
-			except requests.exceptions.Timeout:
-				frappe.logger().error(f"Timeout creating folder: {webdav_url}")
-				return {
-					"success": False,
-					"error": f"Request timeout while creating folder at {webdav_url}. Nextcloud server may be unreachable or slow."
-				}
 			except requests.exceptions.ConnectionError as e:
 				frappe.logger().error(f"Connection error: {str(e)}")
 				return {

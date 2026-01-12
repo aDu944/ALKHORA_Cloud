@@ -21,10 +21,40 @@ doc_events = {
 def create_opportunity_folder(doc, method):
 	"""
 	Create a folder in Nextcloud when a new Opportunity is created
+	Runs in background to avoid blocking the opportunity creation
 	"""
 	try:
+		# Enqueue the folder creation to run in background
+		frappe.enqueue(
+			method=_create_nextcloud_folder_background,
+			queue="default",
+			timeout=None,  # No timeout
+			job_name=f"create_nextcloud_folder_{doc.name}",
+			opportunity_name=doc.name,
+			is_async=True
+		)
+		frappe.logger().info(f"Enqueued Nextcloud folder creation for Opportunity {doc.name}")
+	except Exception as e:
+		frappe.log_error(
+			title="Nextcloud Integration Error",
+			message=f"Error enqueueing Nextcloud folder creation for Opportunity {doc.name}: {str(e)}"
+		)
+
+def _create_nextcloud_folder_background(opportunity_name):
+	"""
+	Background job function to create Nextcloud folder
+	This runs in the background without blocking the user
+	"""
+	try:
+		# Validate that the opportunity exists
+		if not frappe.db.exists("Opportunity", opportunity_name):
+			frappe.log_error(
+				title="Nextcloud Folder Creation Error",
+				message=f"Opportunity {opportunity_name} not found"
+			)
+			return
+		
 		# Get Nextcloud configuration
-		# Try multiple methods to find the settings document
 		settings_name = None
 		
 		# Method 1: Try known document name first (most reliable)
@@ -40,7 +70,10 @@ def create_opportunity_folder(doc, method):
 				settings_name = existing[0].name
 		
 		if not settings_name:
-			frappe.logger().info("Nextcloud Settings not configured")
+			frappe.log_error(
+				title="Nextcloud Folder Creation Error",
+				message="Nextcloud Settings not configured"
+			)
 			return
 		
 		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
@@ -51,7 +84,6 @@ def create_opportunity_folder(doc, method):
 		
 		# Generate folder path: /ALKHORA/استيرادية {YEAR}/Opportunity-{name}
 		current_year = datetime.now().year
-		opportunity_name = doc.name
 		folder_prefix = nextcloud_config.folder_prefix or "Opportunity-"
 		
 		# Build the full path
@@ -60,6 +92,7 @@ def create_opportunity_folder(doc, method):
 		full_path = f"{base_path}/{folder_name}"
 		
 		# Create folder in Nextcloud
+		frappe.logger().info(f"Creating Nextcloud folder for opportunity {opportunity_name}: {full_path}")
 		result = create_nextcloud_folder(
 			nextcloud_url=nextcloud_config.nextcloud_url,
 			username=nextcloud_config.username,
@@ -68,32 +101,64 @@ def create_opportunity_folder(doc, method):
 		)
 		
 		if result.get("success"):
-			# Store the Nextcloud folder path in a custom field (if exists)
-			# or log it for reference
-			frappe.logger().info(f"Created Nextcloud folder: {result.get('folder_path')} for Opportunity: {opportunity_name}")
-			
-			# Add a comment to the opportunity
-			doc.add_comment(
+			# Get the opportunity document to add a comment
+			opportunity_doc = frappe.get_doc("Opportunity", opportunity_name)
+			opportunity_doc.add_comment(
 				comment_type="Info",
 				text=f"Nextcloud folder created: {result.get('folder_path')}"
 			)
+			
+			# Send notification to user
+			frappe.publish_realtime(
+				event="nextcloud_folder_created",
+				message={
+					"success": True,
+					"message": f"Nextcloud folder created successfully for {opportunity_name}",
+					"folder_path": result.get("folder_path")
+				},
+				user=frappe.session.user
+			)
+			
+			frappe.logger().info(f"Successfully created Nextcloud folder: {result.get('folder_path')} for Opportunity: {opportunity_name}")
 		else:
+			error_msg = result.get("error", "Failed to create folder")
 			frappe.log_error(
-				title="Nextcloud Folder Creation Failed",
-				message=f"Failed to create folder for Opportunity {opportunity_name}: {result.get('error')}"
+				title="Nextcloud Folder Creation Error",
+				message=f"Failed to create folder for {opportunity_name}: {error_msg}"
+			)
+			
+			# Send error notification to user
+			frappe.publish_realtime(
+				event="nextcloud_folder_created",
+				message={
+					"success": False,
+					"error": f"Failed to create Nextcloud folder: {error_msg}"
+				},
+				user=frappe.session.user
 			)
 			
 	except Exception as e:
 		frappe.log_error(
-			title="Nextcloud Integration Error",
-			message=f"Error creating Nextcloud folder for Opportunity {doc.name}: {str(e)}"
+			title="Nextcloud Folder Creation Error",
+			message=f"Error creating Nextcloud folder for Opportunity {opportunity_name}: {str(e)}"
 		)
+		
+		# Send error notification to user
+		frappe.publish_realtime(
+			event="nextcloud_folder_created",
+			message={
+				"success": False,
+				"error": f"An error occurred: {str(e)}"
+			},
+			user=frappe.session.user
+		)
+
 
 @frappe.whitelist()
 def create_nextcloud_folder_manual(opportunity_name):
 	"""
 	Manually create a Nextcloud folder for an Opportunity
-	This can be called from the client-side button
+	This enqueues the job in the background
 	"""
 	try:
 		# Validate that the opportunity exists
@@ -104,7 +169,6 @@ def create_nextcloud_folder_manual(opportunity_name):
 			}
 		
 		# Get Nextcloud configuration
-		# Try multiple methods to find the settings document
 		settings_name = None
 		
 		# Method 1: Try known document name first (most reliable)
@@ -133,59 +197,25 @@ def create_nextcloud_folder_manual(opportunity_name):
 				"error": "Nextcloud integration is disabled. Please enable it in Nextcloud Settings."
 			}
 		
-		# Generate folder path: /ALKHORA/استيرادية {YEAR}/Opportunity-{name}
-		current_year = datetime.now().year
-		folder_prefix = nextcloud_config.folder_prefix or "Opportunity-"
+		# Enqueue the job to run in background
+		frappe.enqueue(
+			method=_create_nextcloud_folder_background,
+			queue="default",
+			timeout=None,  # No timeout
+			job_name=f"create_nextcloud_folder_{opportunity_name}",
+			opportunity_name=opportunity_name,
+			is_async=True
+		)
 		
-		# Build the full path
-		base_path = f"ALKHORA/استيرادية {current_year}"
-		folder_name = f"{folder_prefix}{opportunity_name}"
-		full_path = f"{base_path}/{folder_name}"
+		return {
+			"success": True,
+			"message": "Folder creation started in background. You will be notified when it's complete."
+		}
 		
-		# Create folder in Nextcloud
-		frappe.logger().info(f"Creating Nextcloud folder for opportunity {opportunity_name}: {full_path}")
-		try:
-			result = create_nextcloud_folder(
-				nextcloud_url=nextcloud_config.nextcloud_url,
-				username=nextcloud_config.username,
-				password=nextcloud_config.get_password("password"),
-				folder_path=full_path
-			)
-			frappe.logger().info(f"Nextcloud folder creation result: {result}")
-		except Exception as e:
-			frappe.logger().error(f"Error creating Nextcloud folder: {str(e)}")
-			return {
-				"success": False,
-				"error": f"Error creating folder: {str(e)}"
-			}
-		
-		if result.get("success"):
-			# Get the opportunity document to add a comment
-			opportunity_doc = frappe.get_doc("Opportunity", opportunity_name)
-			opportunity_doc.add_comment(
-				comment_type="Info",
-				text=f"Nextcloud folder created manually: {result.get('folder_path')}"
-			)
-			
-			frappe.logger().info(f"Manually created Nextcloud folder: {result.get('folder_path')} for Opportunity: {opportunity_name}")
-			
-			return {
-				"success": True,
-				"message": "Folder created successfully",
-				"folder_path": result.get("folder_path")
-			}
-		else:
-			error_msg = result.get("error", "Failed to create folder")
-			frappe.logger().error(f"Failed to create Nextcloud folder: {error_msg}")
-			return {
-				"success": False,
-				"error": error_msg
-			}
-			
 	except Exception as e:
 		frappe.log_error(
 			title="Nextcloud Manual Folder Creation Error",
-			message=f"Error manually creating Nextcloud folder for Opportunity {opportunity_name}: {str(e)}"
+			message=f"Error enqueueing Nextcloud folder creation for Opportunity {opportunity_name}: {str(e)}"
 		)
 		return {
 			"success": False,
