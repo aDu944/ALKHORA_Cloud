@@ -24,26 +24,24 @@ def create_opportunity_folder(doc, method):
 	"""
 	try:
 		# Get Nextcloud configuration
-		# Try to get the settings document (works for both Single DocType and regular)
-		settings_name = "Nextcloud Settings"  # For Single DocType
+		# Try multiple methods to find the settings document
+		settings_name = None
 		
-		# If not found, try to get any existing document
-		if not frappe.db.exists("Nextcloud Settings", settings_name):
-			# Try to find any Nextcloud Settings document
+		# Method 1: Try known document name first (most reliable)
+		if frappe.db.exists("Nextcloud Settings", "ck82qg4l2r"):
+			settings_name = "ck82qg4l2r"
+		# Method 2: Try Single DocType name
+		elif frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
+			settings_name = "Nextcloud Settings"
+		# Method 3: Try to get any existing document
+		else:
 			existing = frappe.get_all("Nextcloud Settings", limit=1)
 			if existing:
 				settings_name = existing[0].name
-			else:
-				# Fallback: try common auto-generated names (for immediate fix)
-				fallback_names = ["ck82qg4l2r"]  # Add your document name here if needed
-				for name in fallback_names:
-					if frappe.db.exists("Nextcloud Settings", name):
-						settings_name = name
-						break
-				
-				if not frappe.db.exists("Nextcloud Settings", settings_name):
-					frappe.logger().info("Nextcloud Settings not configured")
-					return
+		
+		if not settings_name:
+			frappe.logger().info("Nextcloud Settings not configured")
+			return
 		
 		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
 		
@@ -106,28 +104,26 @@ def create_nextcloud_folder_manual(opportunity_name):
 			}
 		
 		# Get Nextcloud configuration
-		# Try to get the settings document (works for both Single DocType and regular)
-		settings_name = "Nextcloud Settings"  # For Single DocType
+		# Try multiple methods to find the settings document
+		settings_name = None
 		
-		# If not found, try to get any existing document
-		if not frappe.db.exists("Nextcloud Settings", settings_name):
-			# Try to find any Nextcloud Settings document
+		# Method 1: Try known document name first (most reliable)
+		if frappe.db.exists("Nextcloud Settings", "ck82qg4l2r"):
+			settings_name = "ck82qg4l2r"
+		# Method 2: Try Single DocType name
+		elif frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
+			settings_name = "Nextcloud Settings"
+		# Method 3: Try to get any existing document
+		else:
 			existing = frappe.get_all("Nextcloud Settings", limit=1)
 			if existing:
 				settings_name = existing[0].name
-			else:
-				# Fallback: try common auto-generated names (for immediate fix)
-				fallback_names = ["ck82qg4l2r"]  # Add your document name here if needed
-				for name in fallback_names:
-					if frappe.db.exists("Nextcloud Settings", name):
-						settings_name = name
-						break
-				
-				if not frappe.db.exists("Nextcloud Settings", settings_name):
-					return {
-						"success": False,
-						"error": "Nextcloud Settings not configured. Please configure it first."
-					}
+		
+		if not settings_name:
+			return {
+				"success": False,
+				"error": "Nextcloud Settings not configured. Please configure it first."
+			}
 		
 		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
 		
