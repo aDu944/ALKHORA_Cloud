@@ -26,7 +26,8 @@ def create_nextcloud_folder(nextcloud_url, username, password, folder_path):
 		encoded_parts = []
 		
 		# Create each parent directory if it doesn't exist
-		# First, check which folders already exist to avoid unnecessary creation requests
+		# Skip PROPFIND check - just try to create, 405 (already exists) is fine
+		# This reduces the number of requests by half, making it much faster
 		import time
 		start_time = time.time()
 		
@@ -39,27 +40,7 @@ def create_nextcloud_folder(nextcloud_url, username, password, folder_path):
 			encoded_path = "/".join(encoded_parts)
 			webdav_url = f"{nextcloud_url}/remote.php/dav/files/{username}/{encoded_path}/"
 			
-			# Check if folder exists first (faster than trying to create and getting 405)
-			check_start = time.time()
-			try:
-				check_response = requests.request(
-					"PROPFIND",
-					webdav_url,
-					auth=HTTPBasicAuth(username, password),
-					headers={"Depth": "0"},
-					timeout=None  # No timeout - let it wait
-				)
-				check_time = time.time() - check_start
-				frappe.logger().info(f"PROPFIND check for {part}: {check_response.status_code} ({check_time:.2f}s)")
-				
-				# If folder exists (207 = multi-status), skip creation
-				if check_response.status_code == 207:
-					frappe.logger().info(f"Folder already exists: {webdav_url}, skipping creation")
-					continue
-			except Exception as e:
-				frappe.logger().info(f"PROPFIND check failed (will try to create): {str(e)}")
-			
-			# Folder doesn't exist, create it
+			# Just try to create - if it exists (405), that's fine, continue
 			create_start = time.time()
 			frappe.logger().info(f"Creating Nextcloud folder: {webdav_url}")
 			
@@ -84,8 +65,8 @@ def create_nextcloud_folder(nextcloud_url, username, password, folder_path):
 				}
 			
 			# Check if folder was created successfully or already exists
+			# 201 = created, 405 = already exists (both are success)
 			if response.status_code not in [201, 405, 207]:
-				# 201 = created, 405 = already exists, 207 = multi-status (some created)
 				# If it's the final folder and it's not 201/405, it's an error
 				if i == len(path_parts) - 1:
 					error_msg = response.text
