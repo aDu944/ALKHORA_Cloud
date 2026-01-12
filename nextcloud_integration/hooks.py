@@ -158,26 +158,22 @@ def _create_nextcloud_folder_background(opportunity_name):
 def create_nextcloud_folder_manual(opportunity_name):
 	"""
 	Manually create a Nextcloud folder for an Opportunity
-	This enqueues the job in the background
+	This enqueues the job in the background and returns immediately
 	"""
 	try:
-		# Validate that the opportunity exists
+		# Quick validation
 		if not frappe.db.exists("Opportunity", opportunity_name):
 			return {
 				"success": False,
 				"error": f"Opportunity {opportunity_name} not found"
 			}
 		
-		# Get Nextcloud configuration
+		# Get Nextcloud configuration (quick lookup)
 		settings_name = None
-		
-		# Method 1: Try known document name first (most reliable)
 		if frappe.db.exists("Nextcloud Settings", "ck82qg4l2r"):
 			settings_name = "ck82qg4l2r"
-		# Method 2: Try Single DocType name
 		elif frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
 			settings_name = "Nextcloud Settings"
-		# Method 3: Try to get any existing document
 		else:
 			existing = frappe.get_all("Nextcloud Settings", limit=1)
 			if existing:
@@ -186,7 +182,7 @@ def create_nextcloud_folder_manual(opportunity_name):
 		if not settings_name:
 			return {
 				"success": False,
-				"error": "Nextcloud Settings not configured. Please configure it first."
+				"error": "Nextcloud Settings not configured."
 			}
 		
 		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
@@ -194,28 +190,30 @@ def create_nextcloud_folder_manual(opportunity_name):
 		if not nextcloud_config.enabled:
 			return {
 				"success": False,
-				"error": "Nextcloud integration is disabled. Please enable it in Nextcloud Settings."
+				"error": "Nextcloud integration is disabled."
 			}
 		
-		# Enqueue the job to run in background
+		# Enqueue immediately and return - don't wait
 		frappe.enqueue(
 			method=_create_nextcloud_folder_background,
 			queue="default",
-			timeout=None,  # No timeout
+			timeout=None,
 			job_name=f"create_nextcloud_folder_{opportunity_name}",
 			opportunity_name=opportunity_name,
-			is_async=True
+			is_async=True,
+			now=False  # Don't wait, just enqueue
 		)
 		
+		# Return immediately - don't wait for job
 		return {
 			"success": True,
-			"message": "Folder creation started in background. You will be notified when it's complete."
+			"message": "Folder creation started in background."
 		}
 		
 	except Exception as e:
 		frappe.log_error(
 			title="Nextcloud Manual Folder Creation Error",
-			message=f"Error enqueueing Nextcloud folder creation for Opportunity {opportunity_name}: {str(e)}"
+			message=f"Error enqueueing Nextcloud folder creation: {str(e)}"
 		)
 		return {
 			"success": False,
@@ -291,4 +289,70 @@ def test_nextcloud_connection_manual():
 		return {
 			"success": False,
 			"error": f"An error occurred while testing connection: {str(e)}"
+		}
+
+
+@frappe.whitelist()
+def ensure_parent_folders_exist():
+	"""
+	Pre-create parent folders (ALKHORA/استيرادية {YEAR}) to make folder creation instant
+	This should be run once per year or when setting up
+	"""
+	try:
+		# Get Nextcloud configuration
+		settings_name = None
+		if frappe.db.exists("Nextcloud Settings", "ck82qg4l2r"):
+			settings_name = "ck82qg4l2r"
+		elif frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
+			settings_name = "Nextcloud Settings"
+		else:
+			existing = frappe.get_all("Nextcloud Settings", limit=1)
+			if existing:
+				settings_name = existing[0].name
+		
+		if not settings_name:
+			return {
+				"success": False,
+				"error": "Nextcloud Settings not configured."
+			}
+		
+		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
+		
+		if not nextcloud_config.enabled:
+			return {
+				"success": False,
+				"error": "Nextcloud integration is disabled."
+			}
+		
+		# Create parent folders
+		current_year = datetime.now().year
+		base_path = f"ALKHORA/استيرادية {current_year}"
+		
+		frappe.logger().info(f"Pre-creating parent folders: {base_path}")
+		result = create_nextcloud_folder(
+			nextcloud_url=nextcloud_config.nextcloud_url,
+			username=nextcloud_config.username,
+			password=nextcloud_config.get_password("password"),
+			folder_path=base_path
+		)
+		
+		if result.get("success"):
+			return {
+				"success": True,
+				"message": f"Parent folders created/verified: {base_path}"
+			}
+		else:
+			return {
+				"success": False,
+				"error": result.get("error", "Failed to create parent folders")
+			}
+		
+	except Exception as e:
+		frappe.log_error(
+			title="Nextcloud Parent Folders Error",
+			message=f"Error creating parent folders: {str(e)}"
+		)
+		return {
+			"success": False,
+			"error": f"Error: {str(e)}"
 		}

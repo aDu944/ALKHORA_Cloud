@@ -21,70 +21,70 @@ def create_nextcloud_folder(nextcloud_url, username, password, folder_path):
 		# Ensure URL doesn't end with slash
 		nextcloud_url = nextcloud_url.rstrip('/')
 		
-		# Split path into components and create parent directories first
+		# Split path into components
 		path_parts = [p for p in folder_path.split('/') if p]
-		encoded_parts = []
 		
-		# Create each parent directory if it doesn't exist
-		# Skip PROPFIND check - just try to create, 405 (already exists) is fine
-		# This reduces the number of requests by half, making it much faster
+		# OPTIMIZED: Parent folders already exist, so only create the final folder
+		# This makes it MUCH faster - just 1 request instead of 3+
 		import time
 		start_time = time.time()
 		
-		for i, part in enumerate(path_parts):
-			# URL encode each segment separately
-			encoded_part = quote(part, safe='')
-			encoded_parts.append(encoded_part)
+		# Encode the full path
+		encoded_parts = [quote(part, safe='') for part in path_parts]
+		encoded_path = "/".join(encoded_parts)
+		webdav_url = f"{nextcloud_url}/remote.php/dav/files/{username}/{encoded_path}/"
+		
+		frappe.logger().info(f"Creating Nextcloud folder (parent folders exist): {webdav_url}")
+		
+		# Single request to create the final folder
+		try:
+			response = requests.request(
+				"MKCOL",
+				webdav_url,
+				auth=HTTPBasicAuth(username, password),
+				headers={
+					"Content-Type": "application/xml"
+				},
+				timeout=30  # Reasonable timeout
+			)
 			
-			# Build the encoded path up to this point
-			encoded_path = "/".join(encoded_parts)
-			webdav_url = f"{nextcloud_url}/remote.php/dav/files/{username}/{encoded_path}/"
-			
-			# Just try to create - if it exists (405), that's fine, continue
-			create_start = time.time()
-			frappe.logger().info(f"Creating Nextcloud folder: {webdav_url}")
-			
-			# Make MKCOL request (WebDAV method to create a collection/folder)
-			try:
-				response = requests.request(
-					"MKCOL",
-					webdav_url,
-					auth=HTTPBasicAuth(username, password),
-					headers={
-						"Content-Type": "application/xml"
-					},
-					timeout=None  # No timeout - let it wait
-				)
-				create_time = time.time() - create_start
-				frappe.logger().info(f"MKCOL response: {response.status_code} for {webdav_url} ({create_time:.2f}s)")
-			except requests.exceptions.ConnectionError as e:
-				frappe.logger().error(f"Connection error: {str(e)}")
-				return {
-					"success": False,
-					"error": f"Connection error: Unable to reach Nextcloud server at {nextcloud_url}. Check your network connection and Nextcloud URL. Error: {str(e)}"
-				}
+			create_time = time.time() - start_time
+			frappe.logger().info(f"MKCOL response: {response.status_code} ({create_time:.2f}s)")
 			
 			# Check if folder was created successfully or already exists
 			# 201 = created, 405 = already exists (both are success)
 			if response.status_code not in [201, 405, 207]:
-				# If it's the final folder and it's not 201/405, it's an error
-				if i == len(path_parts) - 1:
-					error_msg = response.text
-					if response.status_code == 401:
-						error_msg = "Authentication failed. Please check username and password."
-					elif response.status_code == 403:
-						error_msg = "Permission denied. User doesn't have permission to create folders."
-					elif response.status_code == 404:
-						error_msg = "User not found or path invalid."
-					
-					return {
-						"success": False,
-						"error": f"HTTP {response.status_code}: {error_msg}",
-						"status_code": response.status_code
-					}
+				error_msg = response.text
+				if response.status_code == 401:
+					error_msg = "Authentication failed. Please check username and password."
+				elif response.status_code == 403:
+					error_msg = "Permission denied. User doesn't have permission to create folders."
+				elif response.status_code == 404:
+					error_msg = "Parent folder not found. Please ensure parent folders exist."
+				elif response.status_code == 409:
+					error_msg = "Conflict: Parent folder may not exist. Please ensure parent folders are created first."
+				
+				return {
+					"success": False,
+					"error": f"HTTP {response.status_code}: {error_msg}",
+					"status_code": response.status_code
+				}
+			
+		except requests.exceptions.Timeout:
+			frappe.logger().error(f"Timeout creating folder: {webdav_url}")
+			return {
+				"success": False,
+				"error": f"Request timeout while creating folder. Nextcloud server may be slow."
+			}
+		except requests.exceptions.ConnectionError as e:
+			frappe.logger().error(f"Connection error: {str(e)}")
+			return {
+				"success": False,
+				"error": f"Connection error: Unable to reach Nextcloud server. Error: {str(e)}"
+			}
 		
 		total_time = time.time() - start_time
-		frappe.logger().info(f"Total folder creation time: {total_time:.2f}s")
+		frappe.logger().info(f"Folder created in {total_time:.2f}s (single request)")
 		
 		# All folders created successfully
 		# Build the display URL (for the files app)
