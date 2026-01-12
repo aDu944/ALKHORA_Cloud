@@ -5,6 +5,7 @@ This ERPNext app automatically creates a folder in your Nextcloud server wheneve
 ## Features
 
 - Automatically creates folders in Nextcloud when opportunities are created
+- Manual folder creation button on Opportunity form
 - Configurable folder naming with prefix support
 - Secure credential management
 - Error logging and notifications
@@ -55,6 +56,8 @@ For security, it's recommended to use an App Password instead of your main passw
 
 ## How It Works
 
+### Automatic Folder Creation
+
 When a new Opportunity is created in ERPNext:
 1. The app detects the creation event
 2. It generates a folder path using the format: `/ALKHORA/استيرادية {YEAR}/{Folder Prefix}{Opportunity Name}`
@@ -63,6 +66,19 @@ When a new Opportunity is created in ERPNext:
 3. It creates the folder (and parent directories if needed) in Nextcloud using the WebDAV API
 4. A comment is added to the Opportunity with the folder link
 5. Any errors are logged in ERPNext's error log
+
+### Manual Folder Creation
+
+You can also manually create a Nextcloud folder for any existing Opportunity:
+1. Open the Opportunity document in ERPNext
+2. Click the **"Create Nextcloud Folder"** button in the Actions menu
+3. The app will create the folder and show a success message with a link to open it
+4. A comment will be added to the Opportunity documenting the manual creation
+
+This is useful if:
+- The automatic creation failed
+- The opportunity was created before the app was installed
+- You need to recreate the folder
 
 ## Folder Structure
 
@@ -102,14 +118,20 @@ The year is automatically updated each year, so opportunities created in 2026 wi
 nextcloud_integration/
 ├── nextcloud_integration/
 │   ├── __init__.py
-│   ├── hooks.py              # ERPNext hooks for Opportunity events
+│   ├── hooks.py              # ERPNext hooks for Opportunity events + manual API
 │   ├── nextcloud_api.py      # Nextcloud WebDAV API integration
 │   ├── modules.txt
+│   ├── public/
+│   │   └── js/
+│   │       └── nextcloud_integration.js  # Client-side JavaScript (backup)
 │   └── doctype/
-│       └── nextcloud_settings/
+│       ├── nextcloud_settings/
+│       │   ├── __init__.py
+│       │   ├── nextcloud_settings.json
+│       │   └── nextcloud_settings.py
+│       └── opportunity_nextcloud_button/
 │           ├── __init__.py
-│           ├── nextcloud_settings.json
-│           └── nextcloud_settings.py
+│           └── opportunity_nextcloud_button.json  # Client Script for button
 ├── setup.py
 └── README.md
 ```
