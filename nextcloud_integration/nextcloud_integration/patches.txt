@@ -1,0 +1,2 @@
+# Patches file for nextcloud_integration
+# This file is required by Frappe even if empty
