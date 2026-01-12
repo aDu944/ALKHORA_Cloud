@@ -34,8 +34,16 @@ def create_opportunity_folder(doc, method):
 			if existing:
 				settings_name = existing[0].name
 			else:
-				frappe.logger().info("Nextcloud Settings not configured")
-				return
+				# Fallback: try common auto-generated names (for immediate fix)
+				fallback_names = ["ck82qg4l2r"]  # Add your document name here if needed
+				for name in fallback_names:
+					if frappe.db.exists("Nextcloud Settings", name):
+						settings_name = name
+						break
+				
+				if not frappe.db.exists("Nextcloud Settings", settings_name):
+					frappe.logger().info("Nextcloud Settings not configured")
+					return
 		
 		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
 		
@@ -108,10 +116,18 @@ def create_nextcloud_folder_manual(opportunity_name):
 			if existing:
 				settings_name = existing[0].name
 			else:
-				return {
-					"success": False,
-					"error": "Nextcloud Settings not configured. Please configure it first."
-				}
+				# Fallback: try common auto-generated names (for immediate fix)
+				fallback_names = ["ck82qg4l2r"]  # Add your document name here if needed
+				for name in fallback_names:
+					if frappe.db.exists("Nextcloud Settings", name):
+						settings_name = name
+						break
+				
+				if not frappe.db.exists("Nextcloud Settings", settings_name):
+					return {
+						"success": False,
+						"error": "Nextcloud Settings not configured. Please configure it first."
+					}
 		
 		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
 		
