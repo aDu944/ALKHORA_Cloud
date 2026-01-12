@@ -1,0 +1,85 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-01-27 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "section_break_1",
+  "nextcloud_url",
+  "username",
+  "password",
+  "section_break_2",
+  "folder_prefix"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enable Nextcloud Integration"
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break",
+   "label": "Nextcloud Configuration"
+  },
+  {
+   "default": "https://cloud.alkhora.com",
+   "fieldname": "nextcloud_url",
+   "fieldtype": "Data",
+   "label": "Nextcloud URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "username",
+   "fieldtype": "Data",
+   "label": "Username",
+   "reqd": 1
+  },
+  {
+   "fieldname": "password",
+   "fieldtype": "Password",
+   "label": "Password / App Password",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_2",
+   "fieldtype": "Section Break",
+   "label": "Folder Settings"
+  },
+  {
+   "default": "Opportunity-",
+   "fieldname": "folder_prefix",
+   "fieldtype": "Data",
+   "label": "Folder Prefix",
+   "description": "Prefix to add before opportunity name. Folders are created in: /ALKHORA/استيرادية {YEAR}/{prefix}{opportunity_name}"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-01-27 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Nextcloud Integration",
+ "name": "Nextcloud Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

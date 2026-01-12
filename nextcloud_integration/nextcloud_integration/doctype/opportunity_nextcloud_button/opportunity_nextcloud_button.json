@@ -1,0 +1,14 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-01-27 11:00:00.000000",
+ "doctype": "Client Script",
+ "dt": "Opportunity",
+ "enabled": 1,
+ "modified": "2026-01-27 11:00:00.000000",
+ "modified_by": "Administrator",
+ "name": "Opportunity Nextcloud Button",
+ "owner": "Administrator",
+ "script": "frappe.ui.form.on('Opportunity', {\n\trefresh: function(frm) {\n\t\t// Only show button if opportunity is saved (has a name)\n\t\tif (frm.doc.name && !frm.doc.__islocal) {\n\t\t\t// Add custom button\n\t\t\tfrm.add_custom_button(__('Create Nextcloud Folder'), function() {\n\t\t\t\tcreate_nextcloud_folder(frm);\n\t\t\t}, __('Actions'));\n\t\t}\n\t}\n});\n\nfunction create_nextcloud_folder(frm) {\n\t// Show loading indicator\n\tfrappe.show_progress(__('Creating Folder'), 50, __('Creating Nextcloud folder...'));\n\t\n\t// Call server method\n\tfrappe.call({\n\t\tmethod: 'nextcloud_integration.nextcloud_integration.hooks.create_nextcloud_folder_manual',\n\t\targs: {\n\t\t\topportunity_name: frm.doc.name\n\t\t},\n\t\tcallback: function(r) {\n\t\t\tfrappe.hide_progress();\n\t\t\t\n\t\t\tif (r.message && r.message.success) {\n\t\t\t\t// Show success message\n\t\t\t\tfrappe.show_alert({\n\t\t\t\t\tmessage: __('Nextcloud folder created successfully'),\n\t\t\t\t\tindicator: 'green'\n\t\t\t}, 5);\n\t\t\t\t\n\t\t\t\t// Reload the form to show the new comment\n\t\t\t\tfrm.reload_doc();\n\t\t\t\t\n\t\t\t\t// Optionally open the folder in a new tab\n\t\t\t\tif (r.message.folder_path) {\n\t\t\t\t\tfrappe.msgprint({\n\t\t\t\t\t\ttitle: __('Success'),\n\t\t\t\t\t\tmessage: __('Folder created successfully!<br><br><a href=\"{0}\" target=\"_blank\">Open Folder in Nextcloud</a>', [r.message.folder_path]),\n\t\t\t\t\t\tindicator: 'green'\n\t\t\t\t});\n\t\t\t}\n\t\t} else {\n\t\t\t// Show error message\n\t\t\tconst error_msg = r.message && r.message.error ? r.message.error : __('Failed to create folder');\n\t\t\tfrappe.show_alert({\n\t\t\t\tmessage: error_msg,\n\t\t\t\tindicator: 'red'\n\t\t}, 10);\n\t\t\t\n\t\t\tfrappe.msgprint({\n\t\t\t\ttitle: __('Error'),\n\t\t\t\tmessage: error_msg,\n\t\t\t\tindicator: 'red'\n\t\t});\n\t\t}\n\t},\n\terror: function(r) {\n\t\tfrappe.hide_progress();\n\t\tfrappe.show_alert({\n\t\t\tmessage: __('An error occurred while creating the folder'),\n\t\t\tindicator: 'red'\n\t\t}, 10);\n\t}\n});\n}",
+ "view": "Form"
+}

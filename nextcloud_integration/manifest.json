@@ -1,0 +1,10 @@
+{
+ "app_name": "nextcloud_integration",
+ "app_title": "Nextcloud Integration",
+ "app_version": "0.0.1",
+ "app_publisher": "ALKHORA",
+ "app_description": "Automatically create Nextcloud folders for new opportunities",
+ "app_email": "support@alkhora.com",
+ "app_license": "MIT",
+ "app_url": "https://github.com/aDu944/ALKHORA_Cloud"
+}
