@@ -9,7 +9,7 @@ setup(
 	description="Automatically create Nextcloud folders for new opportunities",
 	author="ALKHORA",
 	author_email="support@alkhora.com",
-	packages=find_packages(),
+	packages=find_packages(exclude=["tests", "tests.*"]),
 	zip_safe=False,
 	include_package_data=True,
 	install_requires=[
