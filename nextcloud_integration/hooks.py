@@ -24,12 +24,20 @@ def create_opportunity_folder(doc, method):
 	"""
 	try:
 		# Get Nextcloud configuration
-		# Check if settings document exists
-		if not frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
-			frappe.logger().info("Nextcloud Settings not configured")
-			return
+		# Try to get the settings document (works for both Single DocType and regular)
+		settings_name = "Nextcloud Settings"  # For Single DocType
 		
-		nextcloud_config = frappe.get_doc("Nextcloud Settings", "Nextcloud Settings")
+		# If not found, try to get any existing document
+		if not frappe.db.exists("Nextcloud Settings", settings_name):
+			# Try to find any Nextcloud Settings document
+			existing = frappe.get_all("Nextcloud Settings", limit=1)
+			if existing:
+				settings_name = existing[0].name
+			else:
+				frappe.logger().info("Nextcloud Settings not configured")
+				return
+		
+		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
 		
 		if not nextcloud_config.enabled:
 			frappe.logger().info("Nextcloud integration is disabled")
@@ -90,13 +98,22 @@ def create_nextcloud_folder_manual(opportunity_name):
 			}
 		
 		# Get Nextcloud configuration
-		if not frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
-			return {
-				"success": False,
-				"error": "Nextcloud Settings not configured. Please configure it first."
-			}
+		# Try to get the settings document (works for both Single DocType and regular)
+		settings_name = "Nextcloud Settings"  # For Single DocType
 		
-		nextcloud_config = frappe.get_doc("Nextcloud Settings", "Nextcloud Settings")
+		# If not found, try to get any existing document
+		if not frappe.db.exists("Nextcloud Settings", settings_name):
+			# Try to find any Nextcloud Settings document
+			existing = frappe.get_all("Nextcloud Settings", limit=1)
+			if existing:
+				settings_name = existing[0].name
+			else:
+				return {
+					"success": False,
+					"error": "Nextcloud Settings not configured. Please configure it first."
+				}
+		
+		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
 		
 		if not nextcloud_config.enabled:
 			return {
