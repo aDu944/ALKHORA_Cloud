@@ -8,61 +8,76 @@ frappe.ui.form.on('Opportunity', {
 				create_nextcloud_folder(frm);
 			}, __('Actions'));
 		}
-	}
-});
-
-function create_nextcloud_folder(frm) {
-	// Show loading indicator
-	frappe.show_progress(__('Creating Folder'), 50, __('Creating Nextcloud folder...'));
-	
-	// Call server method
-	frappe.call({
-		method: 'nextcloud_integration.hooks.create_nextcloud_folder_manual',
-		args: {
-			opportunity_name: frm.doc.name
-		},
-		callback: function(r) {
-			frappe.hide_progress();
-			
-			if (r.message && r.message.success) {
-				// Show success message
+		
+		// Listen for realtime notifications
+		frappe.realtime.on('nextcloud_folder_created', function(data) {
+			if (data.success) {
 				frappe.show_alert({
 					message: __('Nextcloud folder created successfully'),
 					indicator: 'green'
 				}, 5);
-				
 				// Reload the form to show the new comment
 				frm.reload_doc();
-				
-				// Optionally open the folder in a new tab
-				if (r.message.folder_path) {
-					frappe.msgprint({
-						title: __('Success'),
-						message: __('Folder created successfully!<br><br><a href="{0}" target="_blank">Open Folder in Nextcloud</a>', [r.message.folder_path]),
-						indicator: 'green'
-					});
-				}
 			} else {
-				// Show error message
-				const error_msg = r.message && r.message.error ? r.message.error : __('Failed to create folder');
 				frappe.show_alert({
-					message: error_msg,
+					message: data.error || __('Failed to create folder'),
 					indicator: 'red'
 				}, 10);
-				
-				frappe.msgprint({
-					title: __('Error'),
-					message: error_msg,
-					indicator: 'red'
-				});
 			}
-		},
-		error: function(r) {
-			frappe.hide_progress();
-			frappe.show_alert({
-				message: __('An error occurred while creating the folder'),
-				indicator: 'red'
-			}, 10);
+		});
+	}
+});
+
+function create_nextcloud_folder(frm) {
+	// Show immediate feedback - NO loading indicator
+	frappe.show_alert({
+		message: __('Folder creation started in background. You will be notified when complete.'),
+		indicator: 'blue'
+	}, 5);
+	
+	// Use XMLHttpRequest for TRUE fire-and-forget (no UI blocking at all)
+	var xhr = new XMLHttpRequest();
+	xhr.open('POST', '/api/method/nextcloud_integration.hooks.create_nextcloud_folder_manual', true);
+	xhr.setRequestHeader('Content-Type', 'application/json');
+	xhr.setRequestHeader('X-Frappe-CSRF-Token', frappe.csrf_token);
+	
+	// Very short timeout - just to trigger the job, don't wait for response
+	xhr.timeout = 3000; // 3 seconds max to start the job
+	
+	// Send request (fire and forget)
+	xhr.send(JSON.stringify({
+		args: {
+			opportunity_name: frm.doc.name
 		}
-	});
+	}));
+	
+	// Optional: Handle quick response (but don't block)
+	xhr.onload = function() {
+		if (xhr.status === 200) {
+			try {
+				var response = JSON.parse(xhr.responseText);
+				if (response.message && !response.message.success) {
+					frappe.show_alert({
+						message: response.message.error || __('Failed to start folder creation'),
+						indicator: 'red'
+					}, 10);
+				}
+			} catch(e) {
+				// Ignore parse errors - job might still be queued
+			}
+		}
+	};
+	
+	xhr.ontimeout = function() {
+		// Timeout is OK - job is probably queued
+		// User will get notification when done
+	};
+	
+	xhr.onerror = function() {
+		// Error is OK - job might still be queued
+		frappe.show_alert({
+			message: __('Note: Please check if folder was created. Connection may be slow.'),
+			indicator: 'orange'
+		}, 5);
+	};
 }

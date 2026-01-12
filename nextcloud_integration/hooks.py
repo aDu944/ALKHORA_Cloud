@@ -91,14 +91,52 @@ def _create_nextcloud_folder_background(opportunity_name):
 		folder_name = f"{folder_prefix}{opportunity_name}"
 		full_path = f"{base_path}/{folder_name}"
 		
-		# Create folder in Nextcloud
+		# Create folder in Nextcloud using fastest available method
 		frappe.logger().info(f"Creating Nextcloud folder for opportunity {opportunity_name}: {full_path}")
-		result = create_nextcloud_folder(
-			nextcloud_url=nextcloud_config.nextcloud_url,
-			username=nextcloud_config.username,
-			password=nextcloud_config.get_password("password"),
-			folder_path=full_path
-		)
+		
+		# Check if SSH is enabled and configured
+		use_ssh = getattr(nextcloud_config, 'use_ssh', False) and \
+		          getattr(nextcloud_config, 'ssh_host', None) and \
+		          getattr(nextcloud_config, 'ssh_user', None)
+		
+		if use_ssh:
+			# Use SSH + OCC (fastest method)
+			ssh_host = nextcloud_config.ssh_host
+			ssh_user = nextcloud_config.ssh_user
+			ssh_key_path = getattr(nextcloud_config, 'ssh_key_path', None) or None
+			nextcloud_path = getattr(nextcloud_config, 'nextcloud_path', None) or None
+			occ_user = getattr(nextcloud_config, 'occ_user', None) or "www-data"  # Default to www-data
+			
+			# Check if Service Token is enabled
+			use_service_token = getattr(nextcloud_config, 'use_service_token', False)
+			cf_client_id = getattr(nextcloud_config, 'cf_client_id', None) or None
+			cf_client_secret = None
+			if use_service_token and cf_client_id:
+				cf_client_secret = nextcloud_config.get_password("cf_client_secret") if hasattr(nextcloud_config, 'cf_client_secret') else None
+			
+			from nextcloud_integration.nextcloud_integration.nextcloud_api import _create_via_ssh_occ
+			result = _create_via_ssh_occ(
+				ssh_host=ssh_host,
+				ssh_user=ssh_user,
+				nextcloud_user=nextcloud_config.username,
+				folder_path=full_path,
+				nextcloud_url=nextcloud_config.nextcloud_url,
+				nextcloud_path=nextcloud_path,
+				ssh_key_path=ssh_key_path,
+				occ_user=occ_user,
+				use_service_token=use_service_token,
+				cf_client_id=cf_client_id,
+				cf_client_secret=cf_client_secret
+			)
+		else:
+			# Use optimized WebDAV
+			result = create_nextcloud_folder(
+				nextcloud_url=nextcloud_config.nextcloud_url,
+				username=nextcloud_config.username,
+				password=nextcloud_config.get_password("password"),
+				folder_path=full_path,
+				use_rest_api=False  # Use optimized WebDAV
+			)
 		
 		if result.get("success"):
 			# Get the opportunity document to add a comment
