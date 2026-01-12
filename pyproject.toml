@@ -17,8 +17,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = {find = {where = "nextcloud_integration"}}
-package-dir = {"" = "nextcloud_integration"}
+packages = {find = {}}
 include-package-data = true
 
 [tool.setuptools.package-data]
