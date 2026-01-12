@@ -1,7 +1,7 @@
 from frappe import _
 import frappe
 from datetime import datetime
-from nextcloud_integration.nextcloud_integration.nextcloud_api import create_nextcloud_folder
+from nextcloud_integration.nextcloud_integration.nextcloud_api import create_nextcloud_folder, test_nextcloud_connection
 
 app_name = "nextcloud_integration"
 app_title = "Nextcloud Integration"
@@ -143,12 +143,21 @@ def create_nextcloud_folder_manual(opportunity_name):
 		full_path = f"{base_path}/{folder_name}"
 		
 		# Create folder in Nextcloud
-		result = create_nextcloud_folder(
-			nextcloud_url=nextcloud_config.nextcloud_url,
-			username=nextcloud_config.username,
-			password=nextcloud_config.get_password("password"),
-			folder_path=full_path
-		)
+		frappe.logger().info(f"Creating Nextcloud folder for opportunity {opportunity_name}: {full_path}")
+		try:
+			result = create_nextcloud_folder(
+				nextcloud_url=nextcloud_config.nextcloud_url,
+				username=nextcloud_config.username,
+				password=nextcloud_config.get_password("password"),
+				folder_path=full_path
+			)
+			frappe.logger().info(f"Nextcloud folder creation result: {result}")
+		except Exception as e:
+			frappe.logger().error(f"Error creating Nextcloud folder: {str(e)}")
+			return {
+				"success": False,
+				"error": f"Error creating folder: {str(e)}"
+			}
 		
 		if result.get("success"):
 			# Get the opportunity document to add a comment
@@ -166,9 +175,11 @@ def create_nextcloud_folder_manual(opportunity_name):
 				"folder_path": result.get("folder_path")
 			}
 		else:
+			error_msg = result.get("error", "Failed to create folder")
+			frappe.logger().error(f"Failed to create Nextcloud folder: {error_msg}")
 			return {
 				"success": False,
-				"error": result.get("error", "Unknown error occurred")
+				"error": error_msg
 			}
 			
 	except Exception as e:
@@ -179,4 +190,75 @@ def create_nextcloud_folder_manual(opportunity_name):
 		return {
 			"success": False,
 			"error": f"Error: {str(e)}"
+		}
+
+
+@frappe.whitelist()
+def test_nextcloud_connection_manual():
+	"""
+	Test the connection to Nextcloud using the current settings
+	"""
+	try:
+		# Get Nextcloud configuration
+		settings_name = None
+		
+		# Method 1: Try known document name first (most reliable)
+		if frappe.db.exists("Nextcloud Settings", "ck82qg4l2r"):
+			settings_name = "ck82qg4l2r"
+		# Method 2: Try Single DocType name
+		elif frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
+			settings_name = "Nextcloud Settings"
+		# Method 3: Try to get any existing document
+		else:
+			existing = frappe.get_all("Nextcloud Settings", limit=1)
+			if existing:
+				settings_name = existing[0].name
+		
+		if not settings_name:
+			return {
+				"success": False,
+				"error": "Nextcloud Settings not configured. Please configure it first."
+			}
+		
+		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
+		
+		# Validate required fields
+		if not nextcloud_config.nextcloud_url:
+			return {
+				"success": False,
+				"error": "Nextcloud URL is required. Please enter a Nextcloud URL."
+			}
+		
+		if not nextcloud_config.username:
+			return {
+				"success": False,
+				"error": "Username is required. Please enter a Nextcloud username."
+			}
+		
+		if not nextcloud_config.get_password("password"):
+			return {
+				"success": False,
+				"error": "Password is required. Please enter a Nextcloud password or app password."
+			}
+		
+		# Test the connection
+		frappe.logger().info(f"Testing Nextcloud connection for {nextcloud_config.nextcloud_url}")
+		result = test_nextcloud_connection(
+			nextcloud_url=nextcloud_config.nextcloud_url,
+			username=nextcloud_config.username,
+			password=nextcloud_config.get_password("password")
+		)
+		
+		frappe.logger().info(f"Nextcloud connection test result: {result}")
+		
+		return result
+		
+	except Exception as e:
+		frappe.log_error(
+			title="Nextcloud Connection Test Error",
+			message=f"Error testing Nextcloud connection: {str(e)}"
+		)
+		return {
+			"success": False,
+			"error": f"An error occurred while testing connection: {str(e)}"
 		}

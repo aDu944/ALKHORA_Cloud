@@ -1,0 +1,15 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-01-27 12:00:00.000000",
+ "doctype": "Client Script",
+ "dt": "Nextcloud Settings",
+ "enabled": 1,
+ "modified": "2026-01-27 12:00:00.000000",
+ "modified_by": "Administrator",
+ "name": "Nextcloud Settings Test Button",
+ "owner": "Administrator",
+ "script": "frappe.ui.form.on('Nextcloud Settings', {\n\trefresh: function(frm) {\n\t\t// Add Test Connection button\n\t\tfrm.add_custom_button(__('Test Connection'), function() {\n\t\t\ttest_nextcloud_connection(frm);\n\t\t}, __('Actions'));\n\t}\n});\n\nfunction test_nextcloud_connection(frm) {\n\t// Validate required fields first\n\tif (!frm.doc.nextcloud_url) {\n\t\tfrappe.msgprint({\n\t\t\ttitle: __('Validation Error'),\n\t\t\tmessage: __('Please enter a Nextcloud URL'),\n\t\t\tindicator: 'red'\n\t\t});\n\t\treturn;\n\t}\n\t\n\tif (!frm.doc.username) {\n\t\tfrappe.msgprint({\n\t\t\ttitle: __('Validation Error'),\n\t\t\tmessage: __('Please enter a username'),\n\t\t\tindicator: 'red'\n\t\t});\n\t\treturn;\n\t}\n\t\n\tif (!frm.doc.password) {\n\t\tfrappe.msgprint({\n\t\t\ttitle: __('Validation Error'),\n\t\t\tmessage: __('Please enter a password or app password'),\n\t\t\tindicator: 'red'\n\t\t});\n\t\treturn;\n\t}\n\t\n\t// Save the document first to ensure password is encrypted\n\tif (frm.doc.__unsaved) {\n\t\tfrappe.msgprint({\n\t\t\ttitle: __('Save Required'),\n\t\t\tmessage: __('Please save the document first before testing the connection'),\n\t\t\tindicator: 'orange'\n\t\t});\n\t\treturn;\n\t}\n\t\n\t// Show loading indicator\n\tfrappe.show_progress(__('Testing Connection'), 50, __('Testing Nextcloud connection...'));\n\t\n\t// Call server method\n\tfrappe.call({\n\t\tmethod: 'nextcloud_integration.hooks.test_nextcloud_connection_manual',\n\t\tcallback: function(r) {\n\t\t\tfrappe.hide_progress();\n\t\t\t\n\t\t\tif (r.message && r.message.success) {\n\t\t\t\t// Show success message\n\t\t\t\tfrappe.show_alert({\n\t\t\t\t\tmessage: __('Connection successful!'),\n\t\t\t\t\tindicator: 'green'\n\t\t\t}, 5);\n\t\t\t\t\n\t\t\t\tfrappe.msgprint({\n\t\t\t\t\ttitle: __('Connection Test Successful'),\n\t\t\t\t\tmessage: r.message.message || __('Successfully connected to Nextcloud!'),\n\t\t\t\t\tindicator: 'green'\n\t\t\t});\n\t\t} else {\n\t\t\t// Show error message\n\t\t\tconst error_msg = r.message && r.message.error ? r.message.error : __('Connection test failed');\n\t\t\tfrappe.show_alert({\n\t\t\t\tmessage: error_msg,\n\t\t\t\tindicator: 'red'\n\t\t}, 10);\n\t\t\t\n\t\t\tfrappe.msgprint({\n\t\t\t\ttitle: __('Connection Test Failed'),\n\t\t\t\tmessage: error_msg,\n\t\t\t\tindicator: 'red'\n\t\t});\n\t\t}\n\t},\n\terror: function(r) {\n\t\tfrappe.hide_progress();\n\t\tfrappe.show_alert({\n\t\t\tmessage: __('An error occurred while testing the connection'),\n\t\t\tindicator: 'red'\n\t\t}, 10);\n\t\t\n\t\tfrappe.msgprint({\n\t\t\ttitle: __('Error'),\n\t\t\tmessage: __('An error occurred while testing the connection. Please check the error log for details.'),\n\t\t\tindicator: 'red'\n\t\t});\n\t}\n});\n}",
+ "view": "Form",
+ "module": "Nextcloud Integration"
+}
