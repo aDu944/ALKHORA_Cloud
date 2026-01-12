@@ -1,7 +1,7 @@
 from frappe import _
 import frappe
 from datetime import datetime
-from .nextcloud_api import create_nextcloud_folder
+from nextcloud_integration.nextcloud_integration.nextcloud_api import create_nextcloud_folder
 
 app_name = "nextcloud_integration"
 app_title = "Nextcloud Integration"
@@ -13,7 +13,7 @@ app_license = "MIT"
 # Hooks
 doc_events = {
 	"Opportunity": {
-		"after_insert": "nextcloud_integration.nextcloud_integration.hooks.create_opportunity_folder"
+		"after_insert": "nextcloud_integration.hooks.create_opportunity_folder"
 	}
 }
 

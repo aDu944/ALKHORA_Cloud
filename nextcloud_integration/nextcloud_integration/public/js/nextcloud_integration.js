@@ -17,7 +17,7 @@ function create_nextcloud_folder(frm) {
 	
 	// Call server method
 	frappe.call({
-		method: 'nextcloud_integration.nextcloud_integration.hooks.create_nextcloud_folder_manual',
+		method: 'nextcloud_integration.hooks.create_nextcloud_folder_manual',
 		args: {
 			opportunity_name: frm.doc.name
 		},
