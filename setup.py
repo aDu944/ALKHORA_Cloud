@@ -9,7 +9,8 @@ setup(
 	description="Automatically create Nextcloud folders for new opportunities",
 	author="ALKHORA",
 	author_email="support@alkhora.com",
-	packages=find_packages(exclude=["tests", "tests.*"]),
+	packages=find_packages(where="nextcloud_integration", exclude=["tests", "tests.*"]),
+	package_dir={"": "nextcloud_integration"},
 	zip_safe=False,
 	include_package_data=True,
 	install_requires=[
