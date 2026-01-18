@@ -295,38 +295,62 @@ For passwordless SSH access, set up SSH keys. **Since you're on Frappe Cloud, yo
 
 #### 5.1: Test SSH Connection (Verify Cloudflare Access Works)
 
-**Note**: Since you're on Frappe Cloud, you can't test SSH directly from the ERPNext server. Instead:
+**Note**: Since you're on Frappe Cloud, you can't test SSH directly from the ERPNext server. Use these methods to confirm the policy works:
 
-1. **Use the "Test Connection" button** in Nextcloud Settings:
-   - This will attempt an SSH connection from ERPNext
-   - Check the result message
-   - If it succeeds, Cloudflare Access is working correctly
+**Method 1: Use "Test Connection" Button** (Easiest):
+1. Go to **Nextcloud Integration > Nextcloud Settings** in ERPNext
+2. Make sure SSH configuration is filled in:
+   - ✅ Use SSH + OCC is enabled
+   - SSH Host: `ssh.alkhora.com`
+   - SSH Username: `alkhora`
+   - SSH Key Path: `/home/frappe/frappe-bench/sites/.ssh/nextcloud_key` (or your key path)
+   - Nextcloud Path: `/var/www/nextcloud`
+3. Click the **"Test Connection"** button
+4. **Expected Result**:
+   - ✅ Success message: "Connection test successful" or similar
+   - ❌ If you see "authentication" or "email" errors, the policy isn't working
 
-2. **Check ERPNext Error Log**:
-   - Go to **Setup > Error Log**
-   - Look for any SSH-related errors
-   - If you see "email authentication" errors, Cloudflare Access policy needs adjustment
+**Method 2: Try Creating a Folder** (Real-world test):
+1. Go to an Opportunity in ERPNext
+2. Click **"Create Nextcloud Folder"** button
+3. **Expected Result**:
+   - ✅ Folder created instantly (<1 second)
+   - ✅ Success notification appears
+   - ✅ No errors in Error Log
+   - ❌ If it fails with authentication errors, check the policy
 
-3. **Test from your local machine** (optional verification):
-   ```bash
-   # If you have SSH access from your local machine
-   ssh alkhora@ssh.alkhora.com "echo 'SSH connection test successful'"
-   ```
-   - This verifies the SSH connection works in general
-   - Note: Your local IP may still require email auth (that's OK)
+**Method 3: Check Cloudflare Access Logs** (Most reliable):
+1. Go to **Cloudflare Dashboard > Zero Trust > Access > Logs**
+2. Filter for `ssh.alkhora.com` application
+3. Look for connection attempts from IP `144.24.216.117` (your ERPNext server)
+4. **Expected Result**:
+   - ✅ Status: "Allow" or "Bypass" (green)
+   - ✅ No email authentication prompts
+   - ❌ If you see "Deny" or "Challenge", the policy isn't configured correctly
 
-**Expected Result from ERPNext Test**: 
-- ✅ "Test Connection" button shows success
-- ✅ No errors in Error Log
-- ✅ Folder creation works instantly
-- ❌ If you get authentication errors, Cloudflare Access policy is not configured correctly
+**Method 4: Check ERPNext Error Log**:
+1. Go to **Setup > Error Log** in ERPNext
+2. Look for recent errors related to SSH or Nextcloud
+3. **Expected Result**:
+   - ✅ No authentication errors
+   - ✅ No "email" or "challenge" errors
+   - ❌ If you see "Permission denied" or "authentication failed", check the policy
 
-**If authentication errors appear**:
-1. Check Cloudflare Access policy is configured (Step 0)
-2. Verify ERPNext server IP is in the allowlist
-3. Check policy order (bypass policy must be first)
-4. Wait a few minutes for policy to propagate
-5. Double-check the IP address (contact Frappe Cloud support if unsure)
+**Method 5: Test from Local Machine** (Optional - for verification):
+```bash
+# Test SSH connection (your local IP may still require email auth - that's OK)
+ssh alkhora@ssh.alkhora.com "echo 'SSH connection test'"
+```
+- This verifies SSH works in general
+- Note: Your local IP may still require email auth (that's expected)
+- The important test is from ERPNext (IP: 144.24.216.117)
+
+**Troubleshooting if policy doesn't work**:
+1. ✅ Verify IP in policy: Should be `144.24.216.117` (your Frappe Cloud server IP)
+2. ✅ Check policy order: Bypass policy must be BEFORE email auth policies
+3. ✅ Wait 2-3 minutes: Policy changes can take time to propagate
+4. ✅ Verify policy is saved and active in Cloudflare dashboard
+5. ✅ Check Cloudflare Access Logs to see what's happening
 
 #### 5.2: Test OCC Command via SSH
 
@@ -404,16 +428,35 @@ OCC User: www-data (default)
 - If different, update the policy with correct IP
 
 **Solution 3: Test Policy** (Frappe Cloud):
-- Since you can't SSH from ERPNext server directly:
-  - Use the "Test Connection" button in Nextcloud Settings
-  - Check ERPNext Error Log for authentication errors
-  - If folder creation fails with auth errors, policy needs adjustment
-- Test from your local machine (if you have SSH access):
+- Since you can't SSH from ERPNext server directly, use these methods:
+  
+  **A. Test Connection Button**:
+  - Go to Nextcloud Settings > Click "Test Connection"
+  - If successful, policy is working
+  - If authentication error, policy needs adjustment
+  
+  **B. Check Cloudflare Access Logs** (Most reliable):
+  - Go to Cloudflare Dashboard > Zero Trust > Access > Logs
+  - Filter for `ssh.alkhora.com`
+  - Look for connections from IP `144.24.216.117` (your ERPNext server IP)
+  - Status should be "Allow" or "Bypass" (not "Deny" or "Challenge")
+  
+  **C. Try Creating a Folder**:
+  - Create a folder from an Opportunity
+  - If it works instantly, policy is working
+  - If it fails with auth errors, check the policy
+  
+  **D. Check ERPNext Error Log**:
+  - Go to Setup > Error Log
+  - Look for SSH authentication errors
+  - No errors = policy is working
+  
+- Test from your local machine (optional):
   ```bash
   ssh alkhora@ssh.alkhora.com "echo 'test'"
   ```
   - Note: Your local IP may still require email auth (that's OK)
-  - The important test is from ERPNext (via Test Connection button)
+  - The important test is from ERPNext server (IP: 144.24.216.117)
 
 **Solution 4: Check Cloudflare Tunnel Configuration**:
 - Ensure SSH (port 22) is configured in Cloudflare tunnel

@@ -24,6 +24,14 @@ def create_opportunity_folder(doc, method):
 	Runs in background to avoid blocking the opportunity creation
 	"""
 	try:
+		# Check if auto-create is enabled
+		settings_name = _get_settings_name()
+		if settings_name:
+			nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
+			if not nextcloud_config.enabled or not nextcloud_config.is_feature_enabled("auto_create"):
+				frappe.logger().info(f"Auto-create folders is disabled. Skipping folder creation for Opportunity {doc.name}")
+				return
+		
 		# Enqueue the folder creation to run in background
 		frappe.enqueue(
 			method=_create_nextcloud_folder_background,
@@ -40,7 +48,23 @@ def create_opportunity_folder(doc, method):
 			message=f"Error enqueueing Nextcloud folder creation for Opportunity {doc.name}: {str(e)}"
 		)
 
-def _create_nextcloud_folder_background(opportunity_name):
+def _get_settings_name():
+	"""Helper function to get Nextcloud Settings document name"""
+	settings_name = None
+	# Method 1: Try known document name first (most reliable)
+	if frappe.db.exists("Nextcloud Settings", "ck82qg4l2r"):
+		settings_name = "ck82qg4l2r"
+	# Method 2: Try Single DocType name
+	elif frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
+		settings_name = "Nextcloud Settings"
+	# Method 3: Try to get any existing document
+	else:
+		existing = frappe.get_all("Nextcloud Settings", limit=1)
+		if existing:
+			settings_name = existing[0].name
+	return settings_name
+
+def _create_nextcloud_folder_background(opportunity_name, retry_count=0):
 	"""
 	Background job function to create Nextcloud folder
 	This runs in the background without blocking the user
@@ -48,26 +72,16 @@ def _create_nextcloud_folder_background(opportunity_name):
 	try:
 		# Validate that the opportunity exists
 		if not frappe.db.exists("Opportunity", opportunity_name):
-			frappe.log_error(
-				title="Nextcloud Folder Creation Error",
-				message=f"Opportunity {opportunity_name} not found"
-			)
+			if getattr(frappe.local, "nextcloud_config", None):
+				if frappe.local.nextcloud_config.is_feature_enabled("log_events"):
+					frappe.log_error(
+						title="Nextcloud Folder Creation Error",
+						message=f"Opportunity {opportunity_name} not found"
+					)
 			return
 		
 		# Get Nextcloud configuration
-		settings_name = None
-		
-		# Method 1: Try known document name first (most reliable)
-		if frappe.db.exists("Nextcloud Settings", "ck82qg4l2r"):
-			settings_name = "ck82qg4l2r"
-		# Method 2: Try Single DocType name
-		elif frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
-			settings_name = "Nextcloud Settings"
-		# Method 3: Try to get any existing document
-		else:
-			existing = frappe.get_all("Nextcloud Settings", limit=1)
-			if existing:
-				settings_name = existing[0].name
+		settings_name = _get_settings_name()
 		
 		if not settings_name:
 			frappe.log_error(
@@ -77,9 +91,11 @@ def _create_nextcloud_folder_background(opportunity_name):
 			return
 		
 		nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
+		frappe.local.nextcloud_config = nextcloud_config  # Store for helper functions
 		
 		if not nextcloud_config.enabled:
-			frappe.logger().info("Nextcloud integration is disabled")
+			if nextcloud_config.is_feature_enabled("log_events"):
+				frappe.logger().info("Nextcloud integration is disabled")
 			return
 		
 		# Generate folder path: /ALKHORA/استيرادية {YEAR}/Opportunity-{name}
@@ -139,57 +155,112 @@ def _create_nextcloud_folder_background(opportunity_name):
 			)
 		
 		if result.get("success"):
-			# Get the opportunity document to add a comment
-			opportunity_doc = frappe.get_doc("Opportunity", opportunity_name)
-			opportunity_doc.add_comment(
-				comment_type="Info",
-				text=f"Nextcloud folder created: {result.get('folder_path')}"
-			)
+			# Add comment if feature is enabled
+			if nextcloud_config.is_feature_enabled("add_comments"):
+				try:
+					opportunity_doc = frappe.get_doc("Opportunity", opportunity_name)
+					opportunity_doc.add_comment(
+						comment_type="Info",
+						text=f"Nextcloud folder created: {result.get('folder_path')}"
+					)
+				except Exception as e:
+					if nextcloud_config.is_feature_enabled("log_events"):
+						frappe.logger().error(f"Failed to add comment to opportunity: {str(e)}")
 			
-			# Send notification to user
-			frappe.publish_realtime(
-				event="nextcloud_folder_created",
-				message={
-					"success": True,
-					"message": f"Nextcloud folder created successfully for {opportunity_name}",
-					"folder_path": result.get("folder_path")
-				},
-				user=frappe.session.user
-			)
+			# Send notification if feature is enabled
+			if nextcloud_config.is_feature_enabled("send_notifications"):
+				frappe.publish_realtime(
+					event="nextcloud_folder_created",
+					message={
+						"success": True,
+						"message": f"Nextcloud folder created successfully for {opportunity_name}",
+						"folder_path": result.get("folder_path")
+					},
+					user=frappe.session.user
+				)
 			
-			frappe.logger().info(f"Successfully created Nextcloud folder: {result.get('folder_path')} for Opportunity: {opportunity_name}")
+			# Log event if feature is enabled
+			if nextcloud_config.is_feature_enabled("log_events"):
+				frappe.logger().info(f"Successfully created Nextcloud folder: {result.get('folder_path')} for Opportunity: {opportunity_name}")
 		else:
 			error_msg = result.get("error", "Failed to create folder")
+			
+			# Log error if feature is enabled
+			if nextcloud_config.is_feature_enabled("log_events"):
+				frappe.log_error(
+					title="Nextcloud Folder Creation Error",
+					message=f"Failed to create folder for {opportunity_name}: {error_msg}"
+				)
+			
+			# Try auto-retry if enabled
+			max_retries = nextcloud_config.get_max_retries()
+			if nextcloud_config.is_feature_enabled("auto_retry") and retry_count < max_retries:
+				frappe.logger().info(f"Retrying folder creation for {opportunity_name} (attempt {retry_count + 1}/{max_retries})")
+				frappe.enqueue(
+					method=_create_nextcloud_folder_background,
+					queue="default",
+					timeout=None,
+					job_name=f"create_nextcloud_folder_{opportunity_name}_retry_{retry_count + 1}",
+					opportunity_name=opportunity_name,
+					retry_count=retry_count + 1,
+					is_async=True,
+					at_front=True
+				)
+				return  # Don't send error notification yet, wait for retry
+			
+			# Send error notification if feature is enabled
+			if nextcloud_config.is_feature_enabled("send_notifications"):
+				frappe.publish_realtime(
+					event="nextcloud_folder_created",
+					message={
+						"success": False,
+						"error": f"Failed to create Nextcloud folder: {error_msg}"
+					},
+					user=frappe.session.user
+				)
+			
+	except Exception as e:
+		# Get config for feature checks
+		nextcloud_config = getattr(frappe.local, "nextcloud_config", None)
+		if not nextcloud_config:
+			settings_name = _get_settings_name()
+			if settings_name:
+				nextcloud_config = frappe.get_doc("Nextcloud Settings", settings_name)
+		
+		# Log error if feature is enabled
+		if not nextcloud_config or nextcloud_config.is_feature_enabled("log_events"):
 			frappe.log_error(
 				title="Nextcloud Folder Creation Error",
-				message=f"Failed to create folder for {opportunity_name}: {error_msg}"
+				message=f"Error creating Nextcloud folder for Opportunity {opportunity_name}: {str(e)}"
 			)
-			
-			# Send error notification to user
+		
+		# Try auto-retry if enabled
+		if nextcloud_config and nextcloud_config.is_feature_enabled("auto_retry"):
+			max_retries = nextcloud_config.get_max_retries()
+			if retry_count < max_retries:
+				frappe.logger().info(f"Retrying folder creation for {opportunity_name} after exception (attempt {retry_count + 1}/{max_retries})")
+				frappe.enqueue(
+					method=_create_nextcloud_folder_background,
+					queue="default",
+					timeout=None,
+					job_name=f"create_nextcloud_folder_{opportunity_name}_retry_{retry_count + 1}",
+					opportunity_name=opportunity_name,
+					retry_count=retry_count + 1,
+					is_async=True,
+					at_front=True
+				)
+				return  # Don't send error notification yet, wait for retry
+		
+		# Send error notification if feature is enabled
+		if not nextcloud_config or nextcloud_config.is_feature_enabled("send_notifications"):
 			frappe.publish_realtime(
 				event="nextcloud_folder_created",
 				message={
 					"success": False,
-					"error": f"Failed to create Nextcloud folder: {error_msg}"
+					"error": f"An error occurred: {str(e)}"
 				},
 				user=frappe.session.user
 			)
-			
-	except Exception as e:
-		frappe.log_error(
-			title="Nextcloud Folder Creation Error",
-			message=f"Error creating Nextcloud folder for Opportunity {opportunity_name}: {str(e)}"
-		)
-		
-		# Send error notification to user
-		frappe.publish_realtime(
-			event="nextcloud_folder_created",
-			message={
-				"success": False,
-				"error": f"An error occurred: {str(e)}"
-			},
-			user=frappe.session.user
-		)
 
 
 @frappe.whitelist()
@@ -207,15 +278,7 @@ def create_nextcloud_folder_manual(opportunity_name):
 			}
 		
 		# Get Nextcloud configuration (quick lookup)
-		settings_name = None
-		if frappe.db.exists("Nextcloud Settings", "ck82qg4l2r"):
-			settings_name = "ck82qg4l2r"
-		elif frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
-			settings_name = "Nextcloud Settings"
-		else:
-			existing = frappe.get_all("Nextcloud Settings", limit=1)
-			if existing:
-				settings_name = existing[0].name
+		settings_name = _get_settings_name()
 		
 		if not settings_name:
 			return {
@@ -269,19 +332,7 @@ def test_nextcloud_connection_manual():
 	"""
 	try:
 		# Get Nextcloud configuration
-		settings_name = None
-		
-		# Method 1: Try known document name first (most reliable)
-		if frappe.db.exists("Nextcloud Settings", "ck82qg4l2r"):
-			settings_name = "ck82qg4l2r"
-		# Method 2: Try Single DocType name
-		elif frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
-			settings_name = "Nextcloud Settings"
-		# Method 3: Try to get any existing document
-		else:
-			existing = frappe.get_all("Nextcloud Settings", limit=1)
-			if existing:
-				settings_name = existing[0].name
+		settings_name = _get_settings_name()
 		
 		if not settings_name:
 			return {
@@ -341,15 +392,7 @@ def ensure_parent_folders_exist():
 	"""
 	try:
 		# Get Nextcloud configuration
-		settings_name = None
-		if frappe.db.exists("Nextcloud Settings", "ck82qg4l2r"):
-			settings_name = "ck82qg4l2r"
-		elif frappe.db.exists("Nextcloud Settings", "Nextcloud Settings"):
-			settings_name = "Nextcloud Settings"
-		else:
-			existing = frappe.get_all("Nextcloud Settings", limit=1)
-			if existing:
-				settings_name = existing[0].name
+		settings_name = _get_settings_name()
 		
 		if not settings_name:
 			return {
