@@ -17,6 +17,13 @@ doc_events = {
 	}
 }
 
+# Alternative: You can also use the API function directly
+# doc_events = {
+# 	"Opportunity": {
+# 		"after_insert": "nextcloud_integration.api.create_nextcloud_folder_on_opportunity"
+#  }
+# }
+
 
 def create_opportunity_folder(doc, method):
 	"""
